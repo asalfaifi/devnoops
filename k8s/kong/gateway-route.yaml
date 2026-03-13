@@ -1,0 +1,53 @@
+# Kong configuration for DevNoOps Gateway routing
+# Applied via Kong Admin API (localhost:30081)
+#
+# Kong Service: devnoops-gateway
+#   URL: http://gateway.devnoops.svc.cluster.local:8080
+#
+# Kong Route: devnoops-catch-all
+#   Paths: ["/"]
+#   Strip path: false
+#
+# All external traffic enters through Kong (:30080)
+# and is forwarded to the Go gateway which handles:
+#   - Authentication & RBAC
+#   - Tenant context injection
+#   - Rate limiting
+#   - Audit logging
+#   - Reverse proxy to internal microservices
+#
+# To apply manually:
+#   curl -X POST http://localhost:30081/services \
+#     -d name=devnoops-gateway \
+#     -d url=http://gateway.devnoops.svc.cluster.local:8080
+#
+#   curl -X POST http://localhost:30081/services/devnoops-gateway/routes \
+#     -d name=devnoops-catch-all \
+#     -d 'paths[]=/' \
+#     -d strip_path=false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-gateway-route
+  namespace: kong
+  labels:
+    app: kong
+    platform: devnoops
+data:
+  setup.sh: |
+    #!/bin/sh
+    KONG_ADMIN="http://kong-kong-admin.kong.svc.cluster.local:8001"
+
+    # Create service
+    curl -s -X POST "$KONG_ADMIN/services" \
+      -d name=devnoops-gateway \
+      -d url=http://gateway.devnoops.svc.cluster.local:8080
+
+    # Create catch-all route
+    curl -s -X POST "$KONG_ADMIN/services/devnoops-gateway/routes" \
+      -d name=devnoops-catch-all \
+      -d 'paths[]=/' \
+      -d strip_path=false
+
+    echo "Kong routes configured."
