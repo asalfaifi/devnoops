@@ -1,0 +1,25 @@
+# Redis — namespace: redis
+# Caching for gateway rate limiting, session cache
+image:
+  registry: docker.io
+
+auth:
+  enabled: true
+  password: devnoops-redis-pass
+
+architecture: standalone
+
+master:
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+volumePermissions:
+  image:
+    registry: docker.io

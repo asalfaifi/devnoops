@@ -1,0 +1,31 @@
+# NATS JetStream — namespace: nats
+# Event bus for DevNoOps microservices
+config:
+  jetstream:
+    enabled: true
+    fileStore:
+      pvc:
+        size: 1Gi
+  cluster:
+    enabled: false
+
+container:
+  image:
+    repository: docker.io/nats
+    tag: 2.10-alpine
+  merge:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+reloader:
+  image:
+    repository: docker.io/natsio/nats-server-config-reloader
+    tag: latest
+
+promExporter:
+  enabled: false

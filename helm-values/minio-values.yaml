@@ -1,0 +1,52 @@
+# MinIO — namespace: minio
+# S3-compatible storage for Harbor + nogit + noupload
+# Official MinIO chart (charts.min.io)
+
+mode: standalone
+
+image:
+  repository: quay.io/minio/minio
+  tag: RELEASE.2024-12-18T13-15-44Z
+  pullPolicy: IfNotPresent
+
+rootUser: devnoops-minio
+rootPassword: devnoops-minio-secret
+
+replicas: 1
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+buckets:
+  - name: harbor-registry
+    policy: none
+    purge: false
+  - name: harbor-chartmuseum
+    policy: none
+    purge: false
+  - name: harbor-trivy
+    policy: none
+    purge: false
+  - name: nogit-repos
+    policy: none
+    purge: false
+  - name: noupload-archives
+    policy: none
+    purge: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  type: ClusterIP
+  port: 9000
+
+consoleService:
+  type: ClusterIP
+  port: 9001

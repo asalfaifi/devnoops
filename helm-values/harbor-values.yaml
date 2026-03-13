@@ -1,0 +1,77 @@
+# Harbor — namespace: harbor
+# Container registry backed by external PostgreSQL, Redis, and MinIO
+# Official Harbor chart (helm.goharbor.io)
+
+expose:
+  type: nodePort
+  tls:
+    enabled: false
+  nodePort:
+    ports:
+      http:
+        nodePort: 30003
+
+externalURL: http://localhost:30003
+
+harborAdminPassword: Harbor12345
+
+# --- External PostgreSQL (postgres namespace) ---
+database:
+  type: external
+  external:
+    host: postgresql.postgres.svc.cluster.local
+    port: "5432"
+    username: harbor
+    password: harbor-pg-pass
+    coreDatabase: harbor
+    notaryServerDatabase: harbor_notaryserver
+    notarySignerDatabase: harbor_notarysigner
+    sslmode: disable
+
+# --- External Redis (redis namespace) ---
+redis:
+  type: external
+  external:
+    addr: redis-master.redis.svc.cluster.local:6379
+    password: devnoops-redis-pass
+
+# --- MinIO S3 storage (minio namespace) ---
+persistence:
+  enabled: true
+  imageChartStorage:
+    type: s3
+    s3:
+      region: us-east-1
+      bucket: harbor-registry
+      accesskey: devnoops-minio
+      secretkey: devnoops-minio-secret
+      regionendpoint: http://minio.minio.svc.cluster.local:9000
+      secure: false
+      v4auth: true
+
+trivy:
+  enabled: true
+
+portal:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+core:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+registry:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+jobservice:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi

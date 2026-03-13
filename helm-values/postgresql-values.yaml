@@ -1,0 +1,35 @@
+# PostgreSQL — namespace: postgres
+# Used by: Kong, future service persistence
+image:
+  registry: docker.io
+
+auth:
+  postgresPassword: devnoops-pg-root
+  database: devnoops
+  username: devnoops
+  password: devnoops-pg-pass
+
+primary:
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  initdb:
+    scripts:
+      init-kong.sql: |
+        CREATE DATABASE kong;
+        CREATE USER kong WITH PASSWORD 'kong-pg-pass';
+        GRANT ALL PRIVILEGES ON DATABASE kong TO kong;
+        \c kong
+        GRANT ALL ON SCHEMA public TO kong;
+
+architecture: standalone
+
+volumePermissions:
+  image:
+    registry: docker.io

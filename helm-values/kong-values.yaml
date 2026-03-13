@@ -1,0 +1,47 @@
+# Kong — namespace: kong
+# API Gateway connected to PostgreSQL (cross-namespace)
+# Official Kong chart (charts.konghq.com)
+
+image:
+  repository: docker.io/kong
+  tag: "3.9"
+
+env:
+  database: "postgres"
+  pg_host: "postgresql.postgres.svc.cluster.local"
+  pg_port: "5432"
+  pg_user: "kong"
+  pg_password: "kong-pg-pass"
+  pg_database: "kong"
+  router_flavor: "traditional"
+
+proxy:
+  enabled: true
+  type: NodePort
+  http:
+    enabled: true
+    nodePort: 30080
+  tls:
+    enabled: false
+
+admin:
+  enabled: true
+  type: NodePort
+  http:
+    enabled: true
+    nodePort: 30081
+
+ingressController:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+migrations:
+  preUpgrade: true
+  postUpgrade: true
