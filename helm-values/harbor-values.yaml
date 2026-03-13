@@ -40,6 +40,7 @@ persistence:
   enabled: true
   imageChartStorage:
     type: s3
+    disableredirect: true
     s3:
       region: us-east-1
       bucket: harbor-registry
