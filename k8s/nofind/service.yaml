@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nofind
+  namespace: devnoops
+  labels:
+    app: nofind
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: nofind
+  ports:
+    - port: 9099
+      targetPort: 9099
+      protocol: TCP
+      name: http

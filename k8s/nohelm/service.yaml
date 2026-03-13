@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nohelm
+  namespace: devnoops
+  labels:
+    app: nohelm
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: nohelm
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http

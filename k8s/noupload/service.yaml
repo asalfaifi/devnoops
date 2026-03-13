@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: noupload
+  namespace: devnoops
+  labels:
+    app: noupload
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: noupload
+  ports:
+    - port: 9097
+      targetPort: 9097
+      protocol: TCP
+      name: http

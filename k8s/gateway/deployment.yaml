@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: devnoops
+  labels:
+    app: gateway
+    platform: devnoops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+        platform: devnoops
+    spec:
+      containers:
+        - name: gateway
+          image: localhost:30003/devnoops/gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: POSTGRES_HOST
+              value: "postgresql.postgres.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "devnoops"
+            - name: POSTGRES_PASSWORD
+              value: "devnoops-pg-pass"
+            - name: POSTGRES_DB
+              value: "devnoops"
+            - name: REDIS_ADDR
+              value: "redis-master.redis.svc.cluster.local:6379"
+            - name: REDIS_PASSWORD
+              value: "devnoops-redis-pass"
+            - name: NATS_URL
+              value: "nats://nats.nats.svc.cluster.local:4222"
+            - name: MINIO_ENDPOINT
+              value: "minio.minio.svc.cluster.local:9000"
+            - name: MINIO_ACCESS_KEY
+              value: "devnoops-minio"
+            - name: MINIO_SECRET_KEY
+              value: "devnoops-minio-secret"
+            - name: MINIO_USE_SSL
+              value: "false"
+            - name: NOGIT_URL
+              value: "http://nogit.devnoops.svc.cluster.local:9090"
+            - name: NOUPLOAD_URL
+              value: "http://noupload.devnoops.svc.cluster.local:9097"
+            - name: NOEDITOR_URL
+              value: "http://noeditor.devnoops.svc.cluster.local:9098"
+            - name: NOSCAN_URL
+              value: "http://noscan.devnoops.svc.cluster.local:9091"
+            - name: NOFIND_URL
+              value: "http://nofind.devnoops.svc.cluster.local:9099"
+            - name: NOIMAGE_URL
+              value: "http://noimage.devnoops.svc.cluster.local:9092"
+            - name: NOSHIP_URL
+              value: "http://noship.devnoops.svc.cluster.local:9093"
+            - name: NOCOST_URL
+              value: "http://nocost.devnoops.svc.cluster.local:9094"
+            - name: NOGATE_URL
+              value: "http://nogate.devnoops.svc.cluster.local:9095"
+            - name: NOID_URL
+              value: "http://noid.devnoops.svc.cluster.local:9100"
+            - name: NOSPACE_URL
+              value: "http://nospace.devnoops.svc.cluster.local:9101"
+            - name: NONOTIFY_URL
+              value: "http://nonotify.devnoops.svc.cluster.local:9102"
+            - name: NOBILL_URL
+              value: "http://nobill.devnoops.svc.cluster.local:9103"
+            - name: NOSTATUS_URL
+              value: "http://nostatus.devnoops.svc.cluster.local:9096"
+            - name: NOFIX_URL
+              value: "http://nofix.devnoops.svc.cluster.local:9104"
+            - name: NOINFRA_URL
+              value: "http://noinfra.devnoops.svc.cluster.local:9105"
+            - name: NOHELM_URL
+              value: "http://nohelm.devnoops.svc.cluster.local:8080"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10

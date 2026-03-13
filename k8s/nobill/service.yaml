@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nobill
+  namespace: devnoops
+  labels:
+    app: nobill
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: nobill
+  ports:
+    - port: 9103
+      targetPort: 9103
+      protocol: TCP
+      name: http

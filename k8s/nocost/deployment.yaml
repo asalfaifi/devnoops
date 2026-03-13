@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nocost
+  namespace: devnoops
+  labels:
+    app: nocost
+    platform: devnoops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nocost
+  template:
+    metadata:
+      labels:
+        app: nocost
+        platform: devnoops
+    spec:
+      containers:
+        - name: nocost
+          image: localhost:30003/devnoops/nocost:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9094
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "9094"
+            - name: POSTGRES_HOST
+              value: "postgresql.postgres.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "devnoops"
+            - name: POSTGRES_PASSWORD
+              value: "devnoops-pg-pass"
+            - name: POSTGRES_DB
+              value: "devnoops"
+            - name: REDIS_ADDR
+              value: "redis-master.redis.svc.cluster.local:6379"
+            - name: REDIS_PASSWORD
+              value: "devnoops-redis-pass"
+            - name: NATS_URL
+              value: "nats://nats.nats.svc.cluster.local:4222"
+            - name: MINIO_ENDPOINT
+              value: "minio.minio.svc.cluster.local:9000"
+            - name: MINIO_ACCESS_KEY
+              value: "devnoops-minio"
+            - name: MINIO_SECRET_KEY
+              value: "devnoops-minio-secret"
+            - name: MINIO_USE_SSL
+              value: "false"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9094
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9094
+            initialDelaySeconds: 5
+            periodSeconds: 10

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: noid
+  namespace: devnoops
+  labels:
+    app: noid
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: noid
+  ports:
+    - port: 9100
+      targetPort: 9100
+      protocol: TCP
+      name: http

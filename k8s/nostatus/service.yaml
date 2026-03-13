@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nostatus
+  namespace: devnoops
+  labels:
+    app: nostatus
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: nostatus
+  ports:
+    - port: 9096
+      targetPort: 9096
+      protocol: TCP
+      name: http

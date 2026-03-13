@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: noinfra
+  namespace: devnoops
+  labels:
+    app: noinfra
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: noinfra
+  ports:
+    - port: 9105
+      targetPort: 9105
+      protocol: TCP
+      name: http

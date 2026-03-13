@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nonotify
+  namespace: devnoops
+  labels:
+    app: nonotify
+    platform: devnoops
+spec:
+  type: ClusterIP
+  selector:
+    app: nonotify
+  ports:
+    - port: 9102
+      targetPort: 9102
+      protocol: TCP
+      name: http
