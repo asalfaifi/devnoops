@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${HOME}/go/bin:${PATH}"
+ENGINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export PATH="${ENGINE_ROOT}/ci/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${HOME}/go/bin:${PATH}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export NPM_CONFIG_FUND=false
@@ -19,7 +20,6 @@ docker() {
 
 PHASE="${1:-}"
 ROOT="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
-ENGINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="${ROOT}/.ci-artifacts/${PHASE}"
 PYTHON="${UNIVERSAL_CI_PYTHON:-$(command -v python3.12 || command -v python3)}"
 FULL_SCAN="${UNIVERSAL_CI_FULL_SCAN:-false}"
