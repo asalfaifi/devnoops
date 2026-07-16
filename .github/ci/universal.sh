@@ -13,6 +13,10 @@ if [[ ! -f "$DOCKER_CONFIG/config.json" ]]; then
   printf '{"auths":{}}\n' > "$DOCKER_CONFIG/config.json"
 fi
 
+docker() {
+  command docker --config "$DOCKER_CONFIG" "$@"
+}
+
 PHASE="${1:-}"
 ROOT="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
 ENGINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
