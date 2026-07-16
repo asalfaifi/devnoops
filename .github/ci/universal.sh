@@ -498,12 +498,17 @@ phase_build() {
     context="."
     log "Container build (${file})"
     if ! docker build --pull --label "universal-ci.repo=${GITHUB_REPOSITORY:-local}" \
-      --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --file "$file" "$context"; then
-      context="$(dirname "$file")"
-      [[ "$context" != "." ]] || return 1
-      warn "Retrying ${file} with its containing directory as build context"
-      docker build --pull --label "universal-ci.repo=${GITHUB_REPOSITORY:-local}" \
-        --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --file "$(basename "$file")" "$context"
+        --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --file "$file" "$context"; then
+      warn "BuildKit failed; retrying ${file} with Docker's noninteractive legacy builder"
+      if ! env DOCKER_BUILDKIT=0 docker --config "$DOCKER_CONFIG" build --pull \
+          --label "universal-ci.repo=${GITHUB_REPOSITORY:-local}" \
+          --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --file "$file" "$context"; then
+        context="$(dirname "$file")"
+        [[ "$context" != "." ]] || return 1
+        warn "Retrying ${file} with its containing directory as build context"
+        docker build --pull --label "universal-ci.repo=${GITHUB_REPOSITORY:-local}" \
+          --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --file "$(basename "$file")" "$context"
+      fi
     fi
   done < <(list_dockerfiles)
 
