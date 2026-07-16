@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 ENGINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export PATH="${ENGINE_ROOT}/ci/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${HOME}/go/bin:${PATH}"
+export PATH="${ENGINE_ROOT}/.github/ci/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${HOME}/go/bin:${PATH}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export NPM_CONFIG_FUND=false
