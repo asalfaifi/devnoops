@@ -22,9 +22,145 @@ concurrency:
   group: universal-ci-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CI: "true"
+  FORCE_COLOR: "1"
+  UNIVERSAL_CI_FULL_SCAN: ${{ github.event_name == 'schedule' || github.event.inputs.full_scan == 'true' }}
+  UNIVERSAL_CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+
 jobs:
-  pipeline:
+  policy:
+    name: Policy and repository integrity
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    uses: ./.github/workflows/universal-ci.yml
-    with:
-      full_scan: ${{ github.event_name == 'schedule' || inputs.full_scan }}
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 15
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate repository policy
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@e8064634214d2a9e70263ff3f3c0f0a1694563e4
+        with:
+          phase: policy
+
+  lint:
+    name: Developer experience and lint
+    needs: policy
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 30
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run adaptive linters
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@e8064634214d2a9e70263ff3f3c0f0a1694563e4
+        with:
+          phase: lint
+
+  test:
+    name: Unit and integration tests
+    needs: policy
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 60
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Run adaptive test suites
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@e8064634214d2a9e70263ff3f3c0f0a1694563e4
+        with:
+          phase: test
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-evidence-${{ github.run_id }}
+          path: .ci-artifacts/test
+          if-no-files-found: ignore
+          retention-days: 14
+
+  security:
+    name: Security, dependencies, and SBOM
+    needs: policy
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 60
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run security gates and generate SBOM
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@e8064634214d2a9e70263ff3f3c0f0a1694563e4
+        with:
+          phase: security
+      - name: Upload security evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-evidence-${{ github.run_id }}
+          path: .ci-artifacts/security
+          if-no-files-found: warn
+          retention-days: 30
+
+  build:
+    name: Reproducible application and container build
+    needs: [lint, test, security]
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 75
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Build detected applications and images
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@e8064634214d2a9e70263ff3f3c0f0a1694563e4
+        with:
+          phase: build
+
+  readiness:
+    name: Production readiness and smoke checks
+    needs: build
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 90
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Verify deployment assets and runtime images
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@e8064634214d2a9e70263ff3f3c0f0a1694563e4
+        with:
+          phase: readiness
+      - name: Upload readiness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: readiness-evidence-${{ github.run_id }}
+          path: .ci-artifacts/readiness
+          if-no-files-found: ignore
+          retention-days: 14
+
+  gate:
+    name: Required CI gate
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [policy, lint, test, security, build, readiness]
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Require every pipeline stage
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$NEEDS_JSON" | jq -e 'all(.[]; .result == "success")'
