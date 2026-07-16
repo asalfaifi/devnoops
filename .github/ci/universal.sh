@@ -6,9 +6,12 @@ export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export NPM_CONFIG_FUND=false
 export NPM_CONFIG_AUDIT=false
-export DOCKER_CONFIG="${DOCKER_CONFIG:-${RUNNER_TEMP:-/tmp}/universal-ci-docker}"
+export DOCKER_CONFIG="${RUNNER_TEMP:-/tmp}/universal-ci-docker"
 
 mkdir -p "$DOCKER_CONFIG"
+if [[ ! -f "$DOCKER_CONFIG/config.json" ]]; then
+  printf '{"auths":{}}\n' > "$DOCKER_CONFIG/config.json"
+fi
 
 PHASE="${1:-}"
 ROOT="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
@@ -505,7 +508,7 @@ phase_build() {
 }
 
 phase_readiness() {
-  local compose env_args=() chart file tag image user health failures=0
+  local compose env_args=() chart file tag image user health
   mkdir -p "$ARTIFACTS"
 
   while IFS= read -r compose; do
