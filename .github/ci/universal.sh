@@ -63,7 +63,15 @@ fi
 
 is_ignored_path() {
   case "$1" in
-    _universal-ci/*|vendor/*|third_party/*|node_modules/*|.venv/*|*/node_modules/*|*/.venv/*|testdata/*|*/testdata/*|examples/*|*/examples/*)
+    _universal-ci/*|.vib/*|vendor/*|third_party/*|node_modules/*|.venv/*|*/node_modules/*|*/.venv/*|testdata/*|*/testdata/*|examples/*|*/examples/*)
+      return 0 ;;
+  esac
+  return 1
+}
+
+is_json_with_extensions() {
+  case "$1" in
+    .vib/*|tsconfig*.json|*/tsconfig*.json|jsconfig*.json|*/jsconfig*.json|.vscode/*.json|*/.vscode/*.json|.devcontainer/*.json|*/.devcontainer/*.json)
       return 0 ;;
   esac
   return 1
@@ -230,7 +238,8 @@ phase_policy() {
 
   log "Validating tracked JSON"
   while IFS= read -r file; do
-    jq empty "$file"
+    is_json_with_extensions "$file" && continue
+    jq empty "$file" || die "Invalid JSON: $file"
   done < <(tracked_files '*.json' '*/**.json')
 
   {
