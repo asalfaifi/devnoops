@@ -1,0 +1,30 @@
+name: Universal CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "10 8 * * 6"
+  workflow_dispatch:
+    inputs:
+      full_scan:
+        description: Run repository-wide deep checks
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: universal-ci-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: asalfaifi/devnoops/.github/workflows/universal-ci.yml@universal-ci-v1
+    with:
+      full_scan: ${{ github.event_name == 'schedule' || inputs.full_scan }}
