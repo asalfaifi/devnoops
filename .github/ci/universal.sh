@@ -6,6 +6,9 @@ export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export NPM_CONFIG_FUND=false
 export NPM_CONFIG_AUDIT=false
+export DOCKER_CONFIG="${DOCKER_CONFIG:-${RUNNER_TEMP:-/tmp}/universal-ci-docker}"
+
+mkdir -p "$DOCKER_CONFIG"
 
 PHASE="${1:-}"
 ROOT="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
@@ -185,10 +188,14 @@ unity_editor() {
 }
 
 helm_chart_dirs() {
-  local charts changed chart
+  local charts changed chart shards shard_index
   charts="$(tracked_files Chart.yaml '*/Chart.yaml' '*/*/Chart.yaml' '*/*/*/Chart.yaml' || true)"
   if [[ "$FULL_SCAN" == "true" || "${GITHUB_EVENT_NAME:-}" == "schedule" ]]; then
-    printf '%s\n' "$charts" | sed '/^$/d; s#/Chart.yaml$##'
+    shards="${UNIVERSAL_CI_HELM_SHARDS:-1}"
+    [[ "$shards" =~ ^[1-9][0-9]*$ ]] || die "UNIVERSAL_CI_HELM_SHARDS must be a positive integer"
+    shard_index=$((10#$(date -u +%V) % shards))
+    printf '%s\n' "$charts" | sed '/^$/d; s#/Chart.yaml$##' |
+      awk -v shards="$shards" -v shard_index="$shard_index" '((NR - 1) % shards) == shard_index'
     return
   fi
   changed="$(changed_files)"
