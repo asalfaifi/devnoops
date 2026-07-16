@@ -1,0 +1,16 @@
+name: Universal CI phase
+description: Run one phase of the adaptive universal CI engine
+
+inputs:
+  phase:
+    description: Pipeline phase to execute
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Run universal CI phase
+      shell: bash
+      env:
+        UNIVERSAL_CI_PHASE: ${{ inputs.phase }}
+      run: /opt/homebrew/bin/bash "$GITHUB_ACTION_PATH/../../ci/universal.sh" "$UNIVERSAL_CI_PHASE"
