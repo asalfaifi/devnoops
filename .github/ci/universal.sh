@@ -113,6 +113,10 @@ list_go_modules() {
 }
 
 list_node_projects() {
+  if [[ -f package.json ]] && { [[ -f pnpm-workspace.yaml ]] || jq -e '.workspaces != null' package.json >/dev/null 2>&1; }; then
+    printf '.\n'
+    return
+  fi
   tracked_files package.json '*/package.json' | sed 's#/package.json$##; s#^package.json$#.#' | sort -u
 }
 
