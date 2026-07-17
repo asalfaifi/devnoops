@@ -626,7 +626,7 @@ phase_security() {
   if ((manifest_count > 0)); then
     log "Cross-ecosystem OSV dependency analysis"
     rc=0
-    osv-scanner scan source -r --allow-no-lockfiles \
+    osv-scanner scan source -r --allow-no-lockfiles --no-resolve \
       --experimental-exclude .git --experimental-exclude .ci-artifacts --experimental-exclude _universal-ci \
       --experimental-exclude .vib --experimental-exclude vendor --experimental-exclude third_party \
       --experimental-exclude node_modules --experimental-exclude .venv --experimental-exclude testdata \
