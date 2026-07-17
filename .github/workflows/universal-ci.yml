@@ -33,14 +33,14 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: universal-ci-v1
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
           path: _universal-ci
           persist-credentials: false
       - name: Validate repository policy
         run: /opt/homebrew/bin/bash _universal-ci/.github/ci/universal.sh policy
 
-  lint:
-    name: Developer experience and lint
+  shift-left:
+    name: Shift-left change security
     needs: policy
     runs-on: [self-hosted, universal-ci]
     timeout-minutes: 30
@@ -54,7 +54,36 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: universal-ci-v1
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          path: _universal-ci
+          persist-credentials: false
+      - name: Gate changed code and infrastructure early
+        run: /opt/homebrew/bin/bash _universal-ci/.github/ci/universal.sh shift-left
+      - name: Upload shift-left evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shift-left-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci-artifacts/shift-left
+          if-no-files-found: warn
+          retention-days: 30
+
+  lint:
+    name: Developer experience and lint
+    needs: shift-left
+    runs-on: [self-hosted, universal-ci]
+    timeout-minutes: 30
+    steps:
+      - name: Check out application
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out universal CI engine
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: asalfaifi/devnoops
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
           path: _universal-ci
           persist-credentials: false
       - name: Run adaptive linters
@@ -62,7 +91,7 @@ jobs:
 
   test:
     name: Unit and integration tests
-    needs: policy
+    needs: shift-left
     runs-on: [self-hosted, universal-ci]
     timeout-minutes: 60
     steps:
@@ -76,7 +105,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: universal-ci-v1
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
           path: _universal-ci
           persist-credentials: false
       - name: Run adaptive test suites
@@ -92,7 +121,7 @@ jobs:
 
   security:
     name: Security, dependencies, and SBOM
-    needs: policy
+    needs: shift-left
     runs-on: [self-hosted, universal-ci]
     timeout-minutes: 60
     steps:
@@ -105,7 +134,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: universal-ci-v1
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
           path: _universal-ci
           persist-credentials: false
       - name: Run security gates and generate SBOM
@@ -135,7 +164,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: universal-ci-v1
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
           path: _universal-ci
           persist-credentials: false
       - name: Build detected applications and images
@@ -157,7 +186,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: universal-ci-v1
+          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
           path: _universal-ci
           persist-credentials: false
       - name: Verify deployment assets and runtime images
@@ -174,7 +203,7 @@ jobs:
   gate:
     name: Required CI gate
     if: always()
-    needs: [policy, lint, test, security, build, readiness]
+    needs: [policy, shift-left, lint, test, security, build, readiness]
     runs-on: [self-hosted, universal-ci]
     timeout-minutes: 5
     steps:
