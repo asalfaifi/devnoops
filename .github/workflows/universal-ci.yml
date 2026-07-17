@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Validate repository policy
@@ -54,7 +54,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Gate changed code and infrastructure early
@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Run adaptive linters
@@ -105,7 +105,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Run adaptive test suites
@@ -134,7 +134,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Run security gates and generate SBOM
@@ -164,7 +164,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Build detected applications and images
@@ -186,7 +186,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: asalfaifi/devnoops
-          ref: 18774bf7a1347e6019cac39b294e200408ce66c7
+          ref: 0300a2bd6185ae8bfaad2b70414b86dc421bf63c
           path: _universal-ci
           persist-credentials: false
       - name: Verify deployment assets and runtime images
