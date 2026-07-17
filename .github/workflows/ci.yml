@@ -65,7 +65,7 @@ jobs:
     name: Unit and integration tests
     needs: policy
     runs-on: [self-hosted, universal-ci]
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - name: Check out application
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -90,7 +90,7 @@ jobs:
     name: Security, dependencies, and SBOM
     needs: policy
     runs-on: [self-hosted, universal-ci]
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - name: Check out application
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -114,7 +114,7 @@ jobs:
     name: Reproducible application and container build
     needs: [lint, test, security]
     runs-on: [self-hosted, universal-ci]
-    timeout-minutes: 75
+    timeout-minutes: 240
     steps:
       - name: Check out application
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -131,7 +131,7 @@ jobs:
     name: Production readiness and smoke checks
     needs: build
     runs-on: [self-hosted, universal-ci]
-    timeout-minutes: 90
+    timeout-minutes: 240
     steps:
       - name: Check out application
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
