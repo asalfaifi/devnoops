@@ -33,6 +33,7 @@ ARTIFACTS="${ROOT}/.ci-artifacts/${PHASE}"
 PYTHON="${UNIVERSAL_CI_PYTHON:-$(command -v python3.12 || command -v python3)}"
 FULL_SCAN="${UNIVERSAL_CI_FULL_SCAN:-false}"
 BASE_SHA="${UNIVERSAL_CI_BASE_SHA:-}"
+GO_COVERAGE_MIN="${UNIVERSAL_CI_GO_COVERAGE_MIN:-20}"
 
 mkdir -p "$ARTIFACTS"
 cd "$ROOT"
@@ -86,7 +87,7 @@ fi
 
 is_ignored_path() {
   case "$1" in
-    _universal-ci/*|.vib/*|vendor/*|third_party/*|node_modules/*|.venv/*|*/node_modules/*|*/.venv/*|testdata/*|*/testdata/*|examples/*|*/examples/*)
+    _universal-ci/*|.ci-artifacts/*|.vib/*|vendor/*|third_party/*|node_modules/*|.venv/*|*/node_modules/*|*/.venv/*|testdata/*|*/testdata/*|examples/*|*/examples/*)
       return 0 ;;
   esac
   return 1
@@ -188,7 +189,7 @@ npm_install() {
   elif [[ -f "$dir/yarn.lock" ]] && have yarn; then
     (cd "$dir" && yarn install --immutable)
   else
-    (cd "$dir" && npm install --no-audit --no-fund)
+    die "Node project ${dir} must commit a supported lockfile"
   fi
 }
 
@@ -270,12 +271,16 @@ phase_policy() {
   log "Checking required runner tools"
   local file tool
   local -a workflow_files=()
-  for tool in git jq actionlint shellcheck hadolint gitleaks trivy syft docker helm kubeconform; do
+  for tool in git jq actionlint shellcheck hadolint gitleaks trivy syft docker helm kubeconform govulncheck gosec staticcheck osv-scanner zizmor; do
     have "$tool" || die "Runner prerequisite is missing: $tool"
   done
 
   log "Checking patches, conflict markers, and workflow syntax"
-  git show --check --format= HEAD
+  if [[ -n "$BASE_SHA" && "$BASE_SHA" != "0000000000000000000000000000000000000000" ]] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+    git diff --check "${BASE_SHA}...HEAD"
+  else
+    git show --check --format= HEAD
+  fi
   if git grep -nE '^(<<<<<<< |>>>>>>> )|^=======$' -- ':!*.lock' ':!package-lock.json'; then
     die "Unresolved merge-conflict markers found"
   fi
@@ -312,6 +317,120 @@ phase_policy() {
   summary "$(cat "$ARTIFACTS/inventory.md")"
 }
 
+phase_shift_left() {
+  local file slug rc findings
+  local -a changed=() workflow_files=() iac_files=() gitleaks_args=()
+
+  while IFS= read -r file; do
+    [[ -n "$file" && -f "$file" ]] || continue
+    is_ignored_path "$file" && continue
+    changed+=("$file")
+    case "$file" in
+      .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml|.github/actions/*/action.yaml)
+        workflow_files+=("$file") ;;
+    esac
+    case "$file" in
+      .github/*|*package-lock.json|*pnpm-lock.yaml|*.lock)
+        ;;
+      Dockerfile|Dockerfile.*|*/Dockerfile|*/Dockerfile.*|*.tf|*.tf.json|*.tfvars|*.yaml|*.yml)
+        iac_files+=("$file") ;;
+    esac
+  done < <(changed_files)
+  printf '%s\n' "${changed[@]}" > "$ARTIFACTS/changed-files.txt"
+
+  log "Enforcing reproducible dependency inputs"
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if [[ ! -f "$file/package-lock.json" && ! -f "$file/pnpm-lock.yaml" && ! -f "$file/yarn.lock" && ! -f "$file/npm-shrinkwrap.json" ]]; then
+      die "Node project ${file} must commit package-lock.json, pnpm-lock.yaml, yarn.lock, or npm-shrinkwrap.json"
+    fi
+  done < <(list_node_projects)
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if grep -Eq '^[[:space:]]*require([[:space:](]|$)' "$file/go.mod" && [[ ! -f "$file/go.sum" ]]; then
+      die "Go module ${file} declares dependencies but has no committed go.sum"
+    fi
+  done < <(list_go_modules)
+
+  log "Rejecting oversized source additions"
+  for file in "${changed[@]}"; do
+    if (( $(wc -c < "$file") > ${UNIVERSAL_CI_MAX_FILE_BYTES:-5242880} )); then
+      die "Changed file exceeds the 5 MiB source limit: ${file}"
+    fi
+  done
+
+  if ((${#workflow_files[@]})); then
+    log "Auditing changed GitHub automation and immutable action references"
+    actionlint -color -config-file "$ENGINE_ROOT/.github/actionlint.yaml" "${workflow_files[@]}"
+    "$PYTHON" - "${workflow_files[@]}" <<'PY'
+import pathlib, re, sys
+
+uses = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?([^'\"\s#]+)")
+bad = []
+for name in sys.argv[1:]:
+    for lineno, line in enumerate(pathlib.Path(name).read_text().splitlines(), 1):
+        match = uses.match(line)
+        if not match:
+            continue
+        target = match.group(1)
+        if target.startswith("./"):
+            continue
+        if target.startswith("docker://"):
+            if not re.search(r"@sha256:[0-9a-fA-F]{64}$", target):
+                bad.append(f"{name}:{lineno}: container action must use an immutable sha256 digest: {target}")
+            continue
+        ref = target.rsplit("@", 1)[-1] if "@" in target else ""
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+            bad.append(f"{name}:{lineno}: action must be pinned to a full commit SHA: {target}")
+if bad:
+    raise SystemExit("\n".join(bad))
+PY
+  fi
+  if [[ -d .github ]]; then
+    zizmor --min-severity medium --min-confidence medium --format github .github | tee "$ARTIFACTS/zizmor.txt"
+    zizmor --no-exit-codes --min-severity informational --format sarif .github > "$ARTIFACTS/zizmor.sarif"
+  fi
+
+  log "Scanning the change for leaked credentials"
+  gitleaks_args=(git --redact --no-banner)
+  [[ -f .gitleaks.toml ]] && gitleaks_args+=(--config=.gitleaks.toml)
+  if [[ -n "$BASE_SHA" && "$BASE_SHA" != "0000000000000000000000000000000000000000" ]] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+    gitleaks "${gitleaks_args[@]}" --log-opts="${BASE_SHA}...HEAD" .
+  else
+    gitleaks "${gitleaks_args[@]}" --log-opts=-1 .
+  fi
+
+  if ((${#iac_files[@]})); then
+    log "Scanning changed infrastructure and deployment files"
+    mkdir -p "$ARTIFACTS/trivy-config"
+    for file in "${iac_files[@]}"; do
+      slug="$(echo "$file" | tr '/.' '__' | tr -cd '[:alnum:]_-')"
+      rc=0
+      trivy config --severity HIGH,CRITICAL --exit-code 1 --format json \
+        --output "$ARTIFACTS/trivy-config/${slug}.json" "$file" || rc=$?
+      if ((rc != 0)); then
+        jq -r '.Results[]? | .Target as $target | .Misconfigurations[]? | "\(.Severity) \(.ID) \($target): \(.Title)"' \
+          "$ARTIFACTS/trivy-config/${slug}.json"
+        die "High-severity infrastructure finding introduced in ${file}"
+      fi
+    done
+  else
+    log "No infrastructure files changed"
+  fi
+
+  findings=${#changed[@]}
+  {
+    echo "# Shift-left change gate"
+    echo
+    echo "- Changed first-party files reviewed: ${findings}"
+    echo "- Changed automation files audited: ${#workflow_files[@]}"
+    echo "- Changed infrastructure files scanned: ${#iac_files[@]}"
+    echo "- Dependency inputs are reproducible"
+    echo "- No new secrets or high-severity infrastructure findings"
+  } | tee "$ARTIFACTS/shift-left.md"
+  summary "$(cat "$ARTIFACTS/shift-left.md")"
+}
+
 phase_lint() {
   local dir files=() file editor
 
@@ -325,6 +444,7 @@ phase_lint() {
       [[ -z "$unformatted" ]] || die "gofmt is required for: ${unformatted}"
     fi
     (cd "$dir" && go vet ./...)
+    (cd "$dir" && staticcheck ./...)
     if have golangci-lint && [[ -f "$dir/.golangci.yml" || -f "$dir/.golangci.yaml" || -f "$dir/.golangci.toml" || -f "$dir/.golangci.json" ]]; then
       (cd "$dir" && golangci-lint run ./...)
     fi
@@ -398,18 +518,27 @@ PY
 }
 
 phase_test() {
-  local dir venv editor result go_args
+  local dir venv editor result go_args cover log_file coverage slug
+  mkdir -p "$ARTIFACTS/go"
+  printf 'module\tcoverage_percent\tminimum_percent\n' > "$ARTIFACTS/go/coverage.tsv"
   while IFS= read -r dir; do
     [[ -n "$dir" ]] || continue
-    go_args=(-timeout=30m -covermode=atomic -coverprofile="$ARTIFACTS/go/$(echo "$dir" | tr '/.' '__').cover")
+    slug="$(echo "$dir" | tr '/.' '__')"
+    cover="$ARTIFACTS/go/${slug}.cover"
+    log_file="$ARTIFACTS/go/${slug}.log"
+    go_args=(-timeout=30m -covermode=atomic -coverprofile="$cover")
     if [[ "$FULL_SCAN" == "true" || "${GITHUB_EVENT_NAME:-}" == "schedule" ]]; then
       go_args+=(-race)
       log "Go race tests (${dir})"
     else
       log "Go tests (${dir})"
     fi
-    mkdir -p "$ARTIFACTS/go"
-    (cd "$dir" && go test "${go_args[@]}" ./...)
+    (cd "$dir" && go test "${go_args[@]}" ./...) | tee "$log_file"
+    coverage="$(go tool cover -func="$cover" | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+    [[ -n "$coverage" ]] || die "Unable to calculate Go coverage for ${dir}"
+    printf '%s\t%s\t%s\n' "$dir" "$coverage" "$GO_COVERAGE_MIN" | tee -a "$ARTIFACTS/go/coverage.tsv"
+    awk -v actual="$coverage" -v minimum="$GO_COVERAGE_MIN" 'BEGIN { exit !(actual + 0 >= minimum + 0) }' ||
+      die "Go coverage for ${dir} is ${coverage}%, below the ${GO_COVERAGE_MIN}% minimum"
   done < <(list_go_modules)
 
   while IFS= read -r dir; do
@@ -425,7 +554,8 @@ phase_test() {
     venv="$(python_venv "$dir")"
     if [[ -d "$dir/tests" ]] || grep -q '\[tool.pytest' "$dir/pyproject.toml"; then
       log "Python tests (${dir})"
-      (cd "$dir" && "$venv/bin/python" -m pytest)
+      slug="$(echo "$dir" | tr '/.' '__')"
+      (cd "$dir" && "$venv/bin/python" -m pytest --junitxml="$ARTIFACTS/python-${slug}.xml")
     fi
   done < <(list_python_projects)
 
@@ -442,7 +572,7 @@ phase_test() {
 }
 
 phase_security() {
-  local dir venv gitleaks_args
+  local dir venv gitleaks_args slug rc high_count config_count manifest_count
   log "Secret detection"
   gitleaks_args=(git --redact --no-banner)
   [[ -f .gitleaks.toml ]] && gitleaks_args+=(--config=.gitleaks.toml)
@@ -454,14 +584,12 @@ phase_security() {
 
   while IFS= read -r dir; do
     [[ -n "$dir" ]] || continue
-    if have govulncheck; then
-      log "Go vulnerability analysis (${dir})"
-      (cd "$dir" && govulncheck ./...)
-    fi
-    if have gosec; then
-      log "Go SAST (${dir})"
-      (cd "$dir" && gosec -quiet -severity high -confidence high ./...)
-    fi
+    slug="$(echo "$dir" | tr '/.' '__')"
+    log "Go vulnerability analysis (${dir})"
+    (cd "$dir" && govulncheck ./...)
+    log "Go SAST (${dir})"
+    (cd "$dir" && gosec -quiet -severity high -confidence high -fmt sarif \
+      -out "$ARTIFACTS/gosec-${slug}.sarif" ./...)
   done < <(list_go_modules)
 
   while IFS= read -r dir; do
@@ -490,14 +618,54 @@ phase_security() {
     fi
   done < <(list_python_projects)
 
-  log "Critical vulnerability and configuration scan"
-  trivy fs --scanners vuln,misconfig --severity CRITICAL --ignore-unfixed --exit-code 1 \
-    --skip-dirs _universal-ci --skip-dirs .git --skip-dirs node_modules --skip-dirs .venv \
+  manifest_count="$(find . -type f \( -name go.mod -o -name package-lock.json -o -name pnpm-lock.yaml -o -name yarn.lock -o -name requirements.txt -o -name requirements.lock -o -name pyproject.toml \) \
+    -not -path './.git/*' -not -path './.ci-artifacts/*' -not -path './.vib/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/testdata/*' -not -path '*/examples/*' | wc -l | tr -d ' ')"
+  if ((manifest_count > 0)); then
+    log "Cross-ecosystem OSV dependency analysis"
+    rc=0
+    osv-scanner scan source -r --allow-no-lockfiles \
+      --experimental-exclude .git --experimental-exclude .ci-artifacts --experimental-exclude _universal-ci \
+      --experimental-exclude .vib --experimental-exclude vendor --experimental-exclude third_party \
+      --experimental-exclude node_modules --experimental-exclude .venv --experimental-exclude testdata \
+      --experimental-exclude examples --format json --output-file "$ARTIFACTS/osv.json" . \
+      > "$ARTIFACTS/osv.log" 2>&1 || rc=$?
+    cat "$ARTIFACTS/osv.log"
+    ((rc <= 1)) || die "OSV-Scanner failed with exit code ${rc}"
+    high_count="$(jq '[.results[]?.packages[]?.vulnerabilities[]? | select(((.database_specific.severity // "") | ascii_upcase) == "HIGH" or ((.database_specific.severity // "") | ascii_upcase) == "CRITICAL")] | length' "$ARTIFACTS/osv.json")"
+    if ((high_count > 0)); then
+      jq -r '.results[]? | .source.path as $source | .packages[]? | .package as $package | .vulnerabilities[]? | select(((.database_specific.severity // "") | ascii_upcase) == "HIGH" or ((.database_specific.severity // "") | ascii_upcase) == "CRITICAL") | "\(.database_specific.severity) \(.id) \($package.name)@\($package.version) [\($source)]"' "$ARTIFACTS/osv.json" | sort -u
+      die "OSV found ${high_count} high or critical dependency findings"
+    elif ((rc == 1)); then
+      warn "OSV reported lower-severity dependency findings; see the security evidence artifact"
+    fi
+  fi
+
+  log "High and critical filesystem vulnerability scan"
+  trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+    --skip-dirs _universal-ci --skip-dirs .ci-artifacts --skip-dirs .vib --skip-dirs .git \
+    --skip-dirs vendor --skip-dirs third_party --skip-dirs node_modules --skip-dirs .venv \
+    --skip-dirs testdata --skip-dirs examples \
     --format json --output "$ARTIFACTS/trivy.json" .
 
+  log "Repository-wide infrastructure and secret posture report"
+  trivy fs --scanners misconfig,secret --severity HIGH,CRITICAL --exit-code 0 \
+    --skip-dirs _universal-ci --skip-dirs .ci-artifacts --skip-dirs .vib --skip-dirs .git \
+    --skip-dirs vendor --skip-dirs third_party --skip-dirs node_modules --skip-dirs .venv \
+    --skip-dirs testdata --skip-dirs examples \
+    --format json --output "$ARTIFACTS/trivy-posture.json" .
+  config_count="$(jq '[.Results[]? | .Misconfigurations[]?, .Secrets[]?] | length' "$ARTIFACTS/trivy-posture.json")"
+  if ((config_count > 0)); then
+    warn "Trivy recorded ${config_count} existing high/critical posture findings; new findings are blocked by the shift-left gate"
+    if [[ "${UNIVERSAL_CI_ENFORCE_FULL_POSTURE:-false}" == "true" ]]; then
+      die "Repository-wide posture enforcement found ${config_count} high/critical findings"
+    fi
+  fi
+
   log "CycloneDX software bill of materials"
-  syft scan dir:. --exclude './_universal-ci/**' --exclude './.git/**' \
+  syft scan dir:. --exclude './_universal-ci/**' --exclude './.ci-artifacts/**' --exclude './.vib/**' --exclude './.git/**' \
     -o "cyclonedx-json=$ARTIFACTS/sbom.cdx.json"
+  jq empty "$ARTIFACTS/sbom.cdx.json"
+  shasum -a 256 "$ARTIFACTS/sbom.cdx.json" > "$ARTIFACTS/sbom.cdx.json.sha256"
 
   run_hook
   summary "## Security\n\nSecret detection, SAST, dependency audits, critical vulnerability scanning, and SBOM generation passed."
@@ -575,7 +743,9 @@ phase_readiness() {
     log "Production Helm render (${chart})"
     build_helm_dependencies "$chart"
     helm lint --strict "$chart"
-    helm template universal-ci "$chart" > "$ARTIFACTS/$(echo "$chart" | tr '/' '_').yaml"
+    file="$ARTIFACTS/$(echo "$chart" | tr '/' '_').yaml"
+    helm template universal-ci "$chart" > "$file"
+    kubeconform -strict -summary -ignore-missing-schemas "$file"
   done < <(helm_chart_dirs)
 
   while IFS= read -r file; do
@@ -593,8 +763,8 @@ phase_readiness() {
     if [[ -z "$user" || "$user" == "0" || "$user" == "root" ]]; then
       warn "Production image runs as root: $image"
     fi
-    log "Critical runtime image scan (${image})"
-    trivy image --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 \
+    log "High and critical runtime image scan (${image})"
+    trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
       --format json --output "$ARTIFACTS/$(echo "$file" | tr '/.' '__')-trivy.json" "$image"
     docker image rm "$image" >/dev/null 2>&1 || true
   done < <(list_dockerfiles)
@@ -614,6 +784,7 @@ phase_readiness() {
 
 case "$PHASE" in
   policy) phase_policy ;;
+  shift-left) phase_shift_left ;;
   lint) phase_lint ;;
   test) phase_test ;;
   security) phase_security ;;
