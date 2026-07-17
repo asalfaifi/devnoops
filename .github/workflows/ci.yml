@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Validate repository policy
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: policy
       - name: Upload policy evidence
@@ -66,7 +66,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Gate changed code and infrastructure early
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: shift-left
       - name: Upload shift-left evidence
@@ -90,7 +90,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Run adaptive linters
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: lint
       - name: Upload lint evidence
@@ -115,7 +115,7 @@ jobs:
           lfs: true
           persist-credentials: false
       - name: Run adaptive test suites
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: test
       - name: Upload test evidence
@@ -139,7 +139,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Run security gates and generate SBOM
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: security
       - name: Upload security evidence
@@ -164,7 +164,7 @@ jobs:
           lfs: true
           persist-credentials: false
       - name: Build detected applications and images
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: build
       - name: Upload build evidence
@@ -189,7 +189,7 @@ jobs:
           lfs: true
           persist-credentials: false
       - name: Verify deployment assets and runtime images
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@9ddf6e7a43b7b4bf28f452e5637a2df3906f3254
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@65c69d1043b6254e31de00f64ae45d6e0ce88d33
         with:
           phase: readiness
       - name: Upload readiness evidence
