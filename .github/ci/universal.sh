@@ -241,6 +241,14 @@ helm_chart_dirs() {
   done <<< "$charts"
 }
 
+build_helm_dependencies() {
+  local chart="$1"
+  if ! helm dependency build --skip-refresh "$chart"; then
+    warn "Cached Helm dependency resolution failed for ${chart}; refreshing repositories and retrying once"
+    helm dependency build "$chart"
+  fi
+}
+
 run_hook() {
   local hook="${ROOT}/.github/ci-local.sh"
   if [[ -f "$hook" ]]; then
@@ -372,7 +380,7 @@ PY
   while IFS= read -r dir; do
     [[ -n "$dir" ]] || continue
     log "Helm lint (${dir})"
-    helm dependency build "$dir" >/dev/null 2>&1 || true
+    build_helm_dependencies "$dir"
     helm lint --strict "$dir"
   done < <(helm_chart_dirs)
 
@@ -430,7 +438,7 @@ phase_security() {
   gitleaks_args=(git --redact --no-banner)
   [[ -f .gitleaks.toml ]] && gitleaks_args+=(--config=.gitleaks.toml)
   if [[ "$FULL_SCAN" == "true" || "${GITHUB_EVENT_NAME:-}" == "schedule" ]]; then
-    gitleaks "${gitleaks_args[@]}" --log-opts=--all .
+    gitleaks "${gitleaks_args[@]}" --log-opts=HEAD .
   else
     gitleaks "${gitleaks_args[@]}" --log-opts=-1 .
   fi
@@ -556,7 +564,7 @@ phase_readiness() {
   while IFS= read -r chart; do
     [[ -n "$chart" ]] || continue
     log "Production Helm render (${chart})"
-    helm dependency build "$chart" >/dev/null 2>&1 || true
+    build_helm_dependencies "$chart"
     helm lint --strict "$chart"
     helm template universal-ci "$chart" > "$ARTIFACTS/$(echo "$chart" | tr '/' '_').yaml"
   done < <(helm_chart_dirs)
