@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Validate repository policy
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@1bbbc12c45c5ff81218e3e6740f65808bdb26850
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@6576929bfac27d000bcbc55fcdb22e5012dff024
         with:
           phase: policy
 
@@ -57,7 +57,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Run adaptive linters
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@1bbbc12c45c5ff81218e3e6740f65808bdb26850
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@6576929bfac27d000bcbc55fcdb22e5012dff024
         with:
           phase: lint
 
@@ -74,7 +74,7 @@ jobs:
           lfs: true
           persist-credentials: false
       - name: Run adaptive test suites
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@1bbbc12c45c5ff81218e3e6740f65808bdb26850
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@6576929bfac27d000bcbc55fcdb22e5012dff024
         with:
           phase: test
       - name: Upload test evidence
@@ -98,7 +98,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Run security gates and generate SBOM
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@1bbbc12c45c5ff81218e3e6740f65808bdb26850
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@6576929bfac27d000bcbc55fcdb22e5012dff024
         with:
           phase: security
       - name: Upload security evidence
@@ -123,7 +123,7 @@ jobs:
           lfs: true
           persist-credentials: false
       - name: Build detected applications and images
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@1bbbc12c45c5ff81218e3e6740f65808bdb26850
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@6576929bfac27d000bcbc55fcdb22e5012dff024
         with:
           phase: build
 
@@ -140,7 +140,7 @@ jobs:
           lfs: true
           persist-credentials: false
       - name: Verify deployment assets and runtime images
-        uses: asalfaifi/devnoops/.github/actions/universal-phase@1bbbc12c45c5ff81218e3e6740f65808bdb26850
+        uses: asalfaifi/devnoops/.github/actions/universal-phase@6576929bfac27d000bcbc55fcdb22e5012dff024
         with:
           phase: readiness
       - name: Upload readiness evidence
