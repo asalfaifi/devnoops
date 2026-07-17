@@ -131,7 +131,22 @@ list_node_projects() {
 }
 
 list_python_projects() {
-  tracked_files pyproject.toml '*/pyproject.toml' | sed 's#/pyproject.toml$##; s#^pyproject.toml$#.#' | sort -u
+  tracked_files pyproject.toml requirements.txt requirements.lock '*/pyproject.toml' '*/requirements.txt' '*/requirements.lock' |
+    sed -E 's#/(pyproject\.toml|requirements\.(txt|lock))$##; s#^(pyproject\.toml|requirements\.(txt|lock))$#.#' |
+    sort -u
+}
+
+list_security_python_projects() {
+  git ls-files pyproject.toml requirements.txt requirements.lock '*/pyproject.toml' '*/requirements.txt' '*/requirements.lock' |
+    while IFS= read -r file; do
+      case "$file" in
+        vendor/*|third_party/*|.venv/*|*/.venv/*|testdata/*|*/testdata/*)
+          continue ;;
+      esac
+      printf '%s\n' "$file"
+    done |
+    sed -E 's#/(pyproject\.toml|requirements\.(txt|lock))$##; s#^(pyproject\.toml|requirements\.(txt|lock))$#.#' |
+    sort -u
 }
 
 list_unity_projects() {
@@ -208,6 +223,23 @@ npm_audit() {
     fi
   else
     (cd "$dir" && npm audit --omit=dev --audit-level=high)
+  fi
+}
+
+run_osv_gate() {
+  local artifact_name="$1" scope="$2" rc=0
+  local -a config_args=()
+  shift 2
+  [[ -f "$ROOT/osv-scanner.toml" ]] && config_args=(--config "$ROOT/osv-scanner.toml")
+  osv-scanner scan source --no-resolve --no-call-analysis=go "${config_args[@]}" --format json \
+    --output-file "$ARTIFACTS/${artifact_name}.json" "$@" \
+    > "$ARTIFACTS/${artifact_name}.log" 2>&1 || rc=$?
+  cat "$ARTIFACTS/${artifact_name}.log"
+  ((rc <= 1)) || die "OSV-Scanner failed while scanning ${scope} (exit ${rc})"
+  if ((rc == 1)); then
+    jq -r '.results[]? | .source.path as $source | .packages[]? | .package as $package | .vulnerabilities[]? | "\(.id) \($package.name)@\($package.version) [\($source)]"' \
+      "$ARTIFACTS/${artifact_name}.json" | sort -u
+    die "OSV found known vulnerabilities in ${scope}"
   fi
 }
 
@@ -318,16 +350,16 @@ phase_policy() {
 }
 
 phase_shift_left() {
-  local file slug rc findings
-  local -a changed=() workflow_files=() iac_files=() gitleaks_args=()
+  local file slug rc findings dir
+  local -a changed=() workflow_files=() iac_files=() dependency_dirs=() gitleaks_args=()
 
   while IFS= read -r file; do
     [[ -n "$file" && -f "$file" ]] || continue
-    is_ignored_path "$file" && continue
-    changed+=("$file")
     case "$file" in
-      .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml|.github/actions/*/action.yaml)
-        workflow_files+=("$file") ;;
+      go.mod|go.sum|package.json|package-lock.json|npm-shrinkwrap.json|pnpm-lock.yaml|yarn.lock|requirements.txt|requirements.lock|pyproject.toml|osv-scanner.toml|*/go.mod|*/go.sum|*/package.json|*/package-lock.json|*/npm-shrinkwrap.json|*/pnpm-lock.yaml|*/yarn.lock|*/requirements.txt|*/requirements.lock|*/pyproject.toml|*/osv-scanner.toml)
+        dir="${file%/*}"
+        [[ "$dir" == "$file" ]] && dir="."
+        dependency_dirs+=("$dir") ;;
     esac
     case "$file" in
       .github/*|*package-lock.json|*pnpm-lock.yaml|*.lock)
@@ -335,8 +367,25 @@ phase_shift_left() {
       Dockerfile|Dockerfile.*|*/Dockerfile|*/Dockerfile.*|*.tf|*.tf.json|*.tfvars|*.yaml|*.yml)
         iac_files+=("$file") ;;
     esac
+    is_ignored_path "$file" && continue
+    changed+=("$file")
+    case "$file" in
+      .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml|.github/actions/*/action.yaml)
+        workflow_files+=("$file") ;;
+    esac
   done < <(changed_files)
   printf '%s\n' "${changed[@]}" > "$ARTIFACTS/changed-files.txt"
+
+  if ((${#dependency_dirs[@]})); then
+    mapfile -t dependency_dirs < <(printf '%s\n' "${dependency_dirs[@]}" | sort -u)
+    for dir in "${dependency_dirs[@]}"; do
+      if [[ -f "$dir/package.json" && ! -f "$dir/package-lock.json" && ! -f "$dir/pnpm-lock.yaml" && ! -f "$dir/yarn.lock" && ! -f "$dir/npm-shrinkwrap.json" ]]; then
+        die "Changed Node project ${dir} must commit a supported lockfile"
+      fi
+    done
+    log "Scanning changed dependency manifests before build and test"
+    run_osv_gate "changed-dependencies" "changed dependency manifests" "${dependency_dirs[@]}"
+  fi
 
   log "Enforcing reproducible dependency inputs"
   while IFS= read -r file; do
@@ -575,7 +624,7 @@ phase_test() {
 }
 
 phase_security() {
-  local dir venv gitleaks_args slug rc high_count config_count manifest_count
+  local dir venv gitleaks_args slug config_count manifest_count
   log "Secret detection"
   gitleaks_args=(git --redact --no-banner)
   [[ -f .gitleaks.toml ]] && gitleaks_args+=(--config=.gitleaks.toml)
@@ -611,50 +660,40 @@ phase_security() {
     elif [[ -f "$dir/requirements.txt" ]]; then
       "$venv/bin/python" -m pip_audit --strict --requirement "$dir/requirements.txt"
     fi
-    if [[ -d "$dir/core" || -d "$dir/src" || -d "$dir/gittna" ]]; then
+    if [[ -d "$dir/core" || -d "$dir/src" || -d "$dir/gittna" || -f "$dir/main.py" ]]; then
       local targets=() target config_args=()
       for target in core src scripts gittna; do
         [[ -d "$dir/$target" ]] && targets+=("$target")
       done
+      [[ -f "$dir/main.py" ]] && targets+=(main.py)
       [[ -f "$dir/pyproject.toml" ]] && config_args=(-c pyproject.toml)
       (cd "$dir" && "$venv/bin/python" -m bandit -q -r "${targets[@]}" "${config_args[@]}")
     fi
-  done < <(list_python_projects)
+  done < <(list_security_python_projects)
 
   manifest_count="$(find . -type f \( -name go.mod -o -name package-lock.json -o -name pnpm-lock.yaml -o -name yarn.lock -o -name requirements.txt -o -name requirements.lock -o -name pyproject.toml \) \
-    -not -path './.git/*' -not -path './.ci-artifacts/*' -not -path './.vib/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/testdata/*' -not -path '*/examples/*' | wc -l | tr -d ' ')"
+    -not -path './.git/*' -not -path './.ci-artifacts/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/testdata/*' | wc -l | tr -d ' ')"
   if ((manifest_count > 0)); then
     log "Cross-ecosystem OSV dependency analysis"
-    rc=0
-    osv-scanner scan source -r --allow-no-lockfiles --no-resolve \
+    run_osv_gate "osv" "the repository dependency graph" -r --allow-no-lockfiles \
       --experimental-exclude .git --experimental-exclude .ci-artifacts --experimental-exclude _universal-ci \
-      --experimental-exclude .vib --experimental-exclude vendor --experimental-exclude third_party \
+      --experimental-exclude vendor --experimental-exclude third_party \
       --experimental-exclude node_modules --experimental-exclude .venv --experimental-exclude testdata \
-      --experimental-exclude examples --format json --output-file "$ARTIFACTS/osv.json" . \
-      > "$ARTIFACTS/osv.log" 2>&1 || rc=$?
-    cat "$ARTIFACTS/osv.log"
-    ((rc <= 1)) || die "OSV-Scanner failed with exit code ${rc}"
-    high_count="$(jq '[.results[]?.packages[]?.vulnerabilities[]? | select(((.database_specific.severity // "") | ascii_upcase) == "HIGH" or ((.database_specific.severity // "") | ascii_upcase) == "CRITICAL")] | length' "$ARTIFACTS/osv.json")"
-    if ((high_count > 0)); then
-      jq -r '.results[]? | .source.path as $source | .packages[]? | .package as $package | .vulnerabilities[]? | select(((.database_specific.severity // "") | ascii_upcase) == "HIGH" or ((.database_specific.severity // "") | ascii_upcase) == "CRITICAL") | "\(.database_specific.severity) \(.id) \($package.name)@\($package.version) [\($source)]"' "$ARTIFACTS/osv.json" | sort -u
-      die "OSV found ${high_count} high or critical dependency findings"
-    elif ((rc == 1)); then
-      warn "OSV reported lower-severity dependency findings; see the security evidence artifact"
-    fi
+      .
   fi
 
   log "High and critical filesystem vulnerability scan"
   trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
-    --skip-dirs _universal-ci --skip-dirs .ci-artifacts --skip-dirs .vib --skip-dirs .git \
+    --skip-dirs _universal-ci --skip-dirs .ci-artifacts --skip-dirs .git \
     --skip-dirs vendor --skip-dirs third_party --skip-dirs node_modules --skip-dirs .venv \
-    --skip-dirs testdata --skip-dirs examples \
+    --skip-dirs testdata \
     --format json --output "$ARTIFACTS/trivy.json" .
 
   log "Repository-wide infrastructure and secret posture report"
   trivy fs --scanners misconfig,secret --severity HIGH,CRITICAL --exit-code 0 \
-    --skip-dirs _universal-ci --skip-dirs .ci-artifacts --skip-dirs .vib --skip-dirs .git \
+    --skip-dirs _universal-ci --skip-dirs .ci-artifacts --skip-dirs .git \
     --skip-dirs vendor --skip-dirs third_party --skip-dirs node_modules --skip-dirs .venv \
-    --skip-dirs testdata --skip-dirs examples \
+    --skip-dirs testdata \
     --format json --output "$ARTIFACTS/trivy-posture.json" .
   config_count="$(jq '[.Results[]? | .Misconfigurations[]?, .Secrets[]?] | length' "$ARTIFACTS/trivy-posture.json")"
   if ((config_count > 0)); then
@@ -665,7 +704,7 @@ phase_security() {
   fi
 
   log "CycloneDX software bill of materials"
-  syft scan dir:. --exclude './_universal-ci/**' --exclude './.ci-artifacts/**' --exclude './.vib/**' --exclude './.git/**' \
+  syft scan dir:. --exclude './_universal-ci/**' --exclude './.ci-artifacts/**' --exclude './.git/**' \
     -o "cyclonedx-json=$ARTIFACTS/sbom.cdx.json"
   jq empty "$ARTIFACTS/sbom.cdx.json"
   shasum -a 256 "$ARTIFACTS/sbom.cdx.json" > "$ARTIFACTS/sbom.cdx.json.sha256"
