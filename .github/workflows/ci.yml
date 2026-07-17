@@ -20,8 +20,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: universal-ci-${{ github.repository }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: universal-ci-${{ github.repository }}-${{ github.ref }}-${{ (github.event_name == 'schedule' || github.event.inputs.full_scan == 'true') && 'deep' || 'standard' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
   CI: "true"
