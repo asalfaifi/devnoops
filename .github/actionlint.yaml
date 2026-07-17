@@ -1,3 +1,26 @@
 self-hosted-runner:
   labels:
     - universal-ci
+
+# The charts fork carries disabled/imported Bitnami release workflows. Keep their
+# pre-existing ShellCheck debt narrowly baselined while retaining every other
+# actionlint check, including syntax, expressions, action inputs, and new files.
+paths:
+  .github/workflows/cd-pipeline.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(1083|2001|2046|2068|2086|2116|2183):.+'
+  .github/workflows/ci-pipeline.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(1083|2001|2013|2016|2030|2031|2086):.+'
+  .github/workflows/index-monitor.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(2086|2207):.+'
+  .github/workflows/index-update.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(2016|2086):.+'
+  .github/workflows/pr-review-hack.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(2086|2129):.+'
+  .github/workflows/push-tag.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC(2001|2068|2086|2116):.+'
