@@ -8,14 +8,23 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 export NPM_CONFIG_FUND=false
 export NPM_CONFIG_AUDIT=false
 export DOCKER_CONFIG="${RUNNER_TEMP:-/tmp}/universal-ci-docker"
+export UNIVERSAL_CI_HELM_HOME="${RUNNER_TEMP:-/tmp}/universal-ci-helm-home"
 
-mkdir -p "$DOCKER_CONFIG"
+mkdir -p "$DOCKER_CONFIG" "$UNIVERSAL_CI_HELM_HOME"
 if [[ ! -f "$DOCKER_CONFIG/config.json" ]]; then
   printf '{"auths":{}}\n' > "$DOCKER_CONFIG/config.json"
 fi
 
 docker() {
   command docker --config "$DOCKER_CONFIG" "$@"
+}
+
+# Helm's OCI client otherwise falls back to ~/.docker/config.json. On a
+# headless macOS runner that can invoke the desktop credential helper and fail
+# against the locked login keychain even for public dependencies. Isolate only
+# Helm's HOME; other build tools retain the runner account's normal caches.
+helm() {
+  HOME="$UNIVERSAL_CI_HELM_HOME" DOCKER_CONFIG="$DOCKER_CONFIG" command helm "$@"
 }
 
 PHASE="${1:-}"
