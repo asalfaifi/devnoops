@@ -175,6 +175,24 @@ npm_install() {
   fi
 }
 
+npm_audit() {
+  local dir="$1" yarn_major
+  if [[ -f "$dir/package-lock.json" || -f "$dir/npm-shrinkwrap.json" ]]; then
+    (cd "$dir" && npm audit --omit=dev --audit-level=high)
+  elif [[ -f "$dir/pnpm-lock.yaml" ]] && have pnpm; then
+    (cd "$dir" && pnpm audit --prod --audit-level=high)
+  elif [[ -f "$dir/yarn.lock" ]] && have yarn; then
+    yarn_major="$(yarn --version | cut -d. -f1)"
+    if [[ "$yarn_major" == "1" ]]; then
+      (cd "$dir" && yarn audit --groups dependencies --level high)
+    else
+      (cd "$dir" && yarn npm audit --environment production --severity high)
+    fi
+  else
+    (cd "$dir" && npm audit --omit=dev --audit-level=high)
+  fi
+}
+
 npm_has_script() {
   local dir="$1" script="$2"
   jq -e --arg script "$script" '.scripts[$script] != null' "$dir/package.json" >/dev/null 2>&1
@@ -425,7 +443,7 @@ phase_security() {
     [[ -n "$dir" ]] || continue
     npm_install "$dir"
     log "Production dependency audit (${dir})"
-    (cd "$dir" && npm audit --omit=dev --audit-level=high)
+    npm_audit "$dir"
   done < <(list_node_projects)
 
   while IFS= read -r dir; do
