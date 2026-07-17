@@ -476,6 +476,7 @@ PY
     echo
     echo "- Changed first-party files reviewed: ${findings}"
     echo "- Changed automation files audited: ${#workflow_files[@]}"
+    echo "- Changed dependency project roots scanned: ${#dependency_dirs[@]}"
     echo "- Changed infrastructure files scanned: ${#iac_files[@]}"
     echo "- Dependency inputs are reproducible"
     echo "- No new secrets or high-severity infrastructure findings"
