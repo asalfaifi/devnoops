@@ -159,6 +159,11 @@ list_dockerfiles() {
     sort -u
 }
 
+list_compose_files() {
+  tracked_files compose.yml compose.yaml docker-compose.yml docker-compose.yaml \
+    '*/compose.yml' '*/compose.yaml' '*/docker-compose.yml' '*/docker-compose.yaml'
+}
+
 project_hash() {
   local dir="$1"
   (
@@ -720,8 +725,31 @@ docker_tag_for() {
   printf 'universal-ci:%s-%s-%s\n' "${GITHUB_REPOSITORY##*/}" "${GITHUB_SHA:-local}" "$slug"
 }
 
+compose_build_specs() {
+  local compose
+  local -a env_args=()
+  while IFS= read -r compose; do
+    [[ -n "$compose" ]] || continue
+    if [[ -f .env.example ]]; then env_args=(--env-file .env.example); else env_args=(); fi
+    docker compose "${env_args[@]}" -f "$compose" config --format json |
+      jq -r '.services[]? | select(.build != null and (.build.target // "") != "") |
+        [.build.context, (.build.dockerfile // "Dockerfile"), .build.target] | @tsv'
+  done < <(list_compose_files)
+}
+
+compose_tag_for() {
+  local context="$1" file="$2" target="$3" source slug
+  case "$context" in
+    "$ROOT") source="${file}-${target}" ;;
+    "$ROOT"/*) source="${context#"$ROOT"/}/${file}-${target}" ;;
+    *) source="$(basename "$context")/${file}-${target}" ;;
+  esac
+  slug="$(echo "$source" | tr '[:upper:]/._' '[:lower:]----' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/^-//; s/-$//')"
+  printf 'universal-ci:%s-%s-compose-%s\n' "${GITHUB_REPOSITORY##*/}" "${GITHUB_SHA:-local}" "$slug"
+}
+
 phase_build() {
-  local dir venv file tag context
+  local dir venv file tag context target dockerfile_path
   while IFS= read -r dir; do
     [[ -n "$dir" ]] || continue
     log "Go build (${dir})"
@@ -766,12 +794,23 @@ phase_build() {
     fi
   done < <(list_dockerfiles)
 
+  while IFS=$'\t' read -r context file target; do
+    [[ -n "$context" && -n "$file" && -n "$target" ]] || continue
+    if [[ "$file" == /* ]]; then dockerfile_path="$file"; else dockerfile_path="$context/$file"; fi
+    [[ -f "$dockerfile_path" ]] || die "Compose target Dockerfile does not exist: $dockerfile_path"
+    tag="$(compose_tag_for "$context" "$file" "$target")"
+    log "Compose production target build (${file} target=${target})"
+    docker build --pull --label "universal-ci.repo=${GITHUB_REPOSITORY:-local}" \
+      --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --target "$target" \
+      --file "$dockerfile_path" "$context"
+  done < <(compose_build_specs | sort -u)
+
   run_hook
   summary "## Build\n\nAll detected applications and production container images built successfully."
 }
 
 phase_readiness() {
-  local compose env_args=() chart file tag image user health
+  local compose env_args=() chart file tag image user health context target dockerfile_path evidence
   mkdir -p "$ARTIFACTS"
 
   while IFS= read -r compose; do
@@ -779,7 +818,7 @@ phase_readiness() {
     log "Compose model validation (${compose})"
     if [[ -f .env.example ]]; then env_args=(--env-file .env.example); else env_args=(); fi
     docker compose "${env_args[@]}" -f "$compose" config --quiet
-  done < <(tracked_files compose.yml compose.yaml docker-compose.yml docker-compose.yaml '*/compose.yml' '*/compose.yaml' '*/docker-compose.yml' '*/docker-compose.yaml')
+  done < <(list_compose_files)
 
   while IFS= read -r chart; do
     [[ -n "$chart" ]] || continue
@@ -811,6 +850,30 @@ phase_readiness() {
       --format json --output "$ARTIFACTS/$(echo "$file" | tr '/.' '__')-trivy.json" "$image"
     docker image rm "$image" >/dev/null 2>&1 || true
   done < <(list_dockerfiles)
+
+  while IFS=$'\t' read -r context file target; do
+    [[ -n "$context" && -n "$file" && -n "$target" ]] || continue
+    if [[ "$file" == /* ]]; then dockerfile_path="$file"; else dockerfile_path="$context/$file"; fi
+    tag="$(compose_tag_for "$context" "$file" "$target")"
+    if ! docker image inspect "$tag" >/dev/null 2>&1; then
+      warn "Expected Compose target image is missing and will be rebuilt: $tag"
+      docker build --label "universal-ci.repo=${GITHUB_REPOSITORY:-local}" \
+        --label "universal-ci.sha=${GITHUB_SHA:-local}" --tag "$tag" --target "$target" \
+        --file "$dockerfile_path" "$context"
+    fi
+    image="$tag"
+    user="$(docker image inspect --format '{{.Config.User}}' "$image")"
+    health="$(docker image inspect --format '{{if .Config.Healthcheck}}configured{{else}}not-configured{{end}}' "$image")"
+    printf '%s\tuser=%s\thealthcheck=%s\n' "$image" "${user:-root}" "$health" | tee -a "$ARTIFACTS/images.txt"
+    if [[ -z "$user" || "$user" == "0" || "$user" == "root" ]]; then
+      warn "Production Compose target runs as root: $image"
+    fi
+    log "High and critical Compose target image scan (${image})"
+    evidence="compose-$(echo "${file}-${target}" | tr '/.' '__')-trivy.json"
+    trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+      --format json --output "$ARTIFACTS/$evidence" "$image"
+    docker image rm "$image" >/dev/null 2>&1 || true
+  done < <(compose_build_specs | sort -u)
 
   if [[ -f Makefile ]] && grep -Eq '^validate-alerts:' Makefile; then
     log "Operational alert validation"
