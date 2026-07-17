@@ -68,7 +68,11 @@ summary() {
 }
 
 if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
-  acquire_host_lock
+  case "$PHASE" in
+    test|security|build|readiness)
+      acquire_host_lock
+      ;;
+  esac
 fi
 
 is_ignored_path() {
