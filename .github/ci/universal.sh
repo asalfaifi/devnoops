@@ -385,9 +385,12 @@ for name in sys.argv[1:]:
 if bad:
     raise SystemExit("\n".join(bad))
 PY
+    zizmor --min-severity medium --min-confidence medium --format github "${workflow_files[@]}" | tee "$ARTIFACTS/zizmor-changed.txt"
+  else
+    log "No automation files changed"
   fi
   if [[ -d .github ]]; then
-    zizmor --min-severity medium --min-confidence medium --format github .github | tee "$ARTIFACTS/zizmor.txt"
+    log "Recording the full GitHub automation posture"
     zizmor --no-exit-codes --min-severity informational --format sarif .github > "$ARTIFACTS/zizmor.sarif"
   fi
 
