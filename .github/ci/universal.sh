@@ -537,7 +537,7 @@ phase_test() {
       log "Go tests (${dir})"
     fi
     (cd "$dir" && go test "${go_args[@]}" ./...) | tee "$log_file"
-    coverage="$(go tool cover -func="$cover" | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+    coverage="$(cd "$dir" && go tool cover -func="$cover" | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
     [[ -n "$coverage" ]] || die "Unable to calculate Go coverage for ${dir}"
     printf '%s\t%s\t%s\n' "$dir" "$coverage" "$GO_COVERAGE_MIN" | tee -a "$ARTIFACTS/go/coverage.tsv"
     awk -v actual="$coverage" -v minimum="$GO_COVERAGE_MIN" 'BEGIN { exit !(actual + 0 >= minimum + 0) }' ||
