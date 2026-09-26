@@ -1,6 +1,6 @@
 self-hosted-runner:
   labels:
-    - universal-ci
+    - devnoops
 
 # The charts fork carries disabled/imported Bitnami release workflows. Keep their
 # pre-existing ShellCheck debt narrowly baselined while retaining every other
